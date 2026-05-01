@@ -1,0 +1,178 @@
+from __future__ import annotations
+
+import logging
+import os
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from . import nlm
+from .auth import require_token
+from .config import settings
+from .youtube import search_youtube
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+app = FastAPI(title="notebooklm-yt", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()] or ["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/api/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/api/auth/check", dependencies=[Depends(require_token)])
+async def auth_check() -> dict[str, object]:
+    try:
+        notebooks = await nlm.list_notebooks()
+        return {"ok": True, "notebook_count": len(notebooks)}
+    except HTTPException as exc:
+        return {"ok": False, "error": exc.detail, "status_code": exc.status_code}
+
+
+@app.get("/api/youtube/search", dependencies=[Depends(require_token)])
+async def youtube_search(q: str = Query(..., min_length=1), n: int = Query(10, ge=1, le=50)) -> dict[str, object]:
+    results = await search_youtube(q, n)
+    return {"query": q, "count": len(results), "results": results}
+
+
+@app.get("/api/notebooks", dependencies=[Depends(require_token)])
+async def notebooks_list() -> dict[str, object]:
+    return {"notebooks": await nlm.list_notebooks()}
+
+
+class CreateNotebookBody(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
+@app.post("/api/notebooks", dependencies=[Depends(require_token)])
+async def notebooks_create(body: CreateNotebookBody) -> dict[str, object]:
+    return {"notebook": await nlm.create_notebook(body.title)}
+
+
+class AddSourcesBody(BaseModel):
+    notebook_id: str
+    urls: list[str] = Field(..., min_length=1, max_length=50)
+
+
+@app.post("/api/sources/add", dependencies=[Depends(require_token)])
+async def sources_add(body: AddSourcesBody) -> dict[str, object]:
+    added: list[dict] = []
+    errors: list[dict] = []
+    for url in body.urls:
+        try:
+            src = await nlm.add_youtube_source(body.notebook_id, url)
+            added.append(src)
+        except HTTPException as exc:
+            errors.append({"url": url, "error": exc.detail})
+    return {"added": added, "errors": errors}
+
+
+@app.get("/api/notebooks/{notebook_id}/sources", dependencies=[Depends(require_token)])
+async def sources_list(notebook_id: str) -> dict[str, object]:
+    return {"sources": await nlm.list_sources(notebook_id)}
+
+
+class GenerateAudioBody(BaseModel):
+    notebook_id: str
+    instructions: str | None = None
+    audio_format: str | None = None  # deep_dive | brief | critique | debate
+    audio_length: str | None = None  # short | default | long
+
+
+@app.post("/api/generate/audio", dependencies=[Depends(require_token)])
+async def generate_audio(body: GenerateAudioBody) -> dict[str, object]:
+    return await nlm.generate_audio(
+        body.notebook_id,
+        instructions=body.instructions,
+        audio_format=body.audio_format,
+        audio_length=body.audio_length,
+    )
+
+
+class GenerateReportBody(BaseModel):
+    notebook_id: str
+    report_format: str = "briefing_doc"  # briefing_doc | study_guide | blog_post | custom
+    extra_instructions: str | None = None
+
+
+@app.post("/api/generate/report", dependencies=[Depends(require_token)])
+async def generate_report(body: GenerateReportBody) -> dict[str, object]:
+    return await nlm.generate_report(
+        body.notebook_id,
+        report_format=body.report_format,
+        extra_instructions=body.extra_instructions,
+    )
+
+
+class GenerateQuizBody(BaseModel):
+    notebook_id: str
+    difficulty: str | None = None  # easy | medium | hard
+    quantity: str | None = None  # fewer | standard
+
+
+@app.post("/api/generate/quiz", dependencies=[Depends(require_token)])
+async def generate_quiz(body: GenerateQuizBody) -> dict[str, object]:
+    return await nlm.generate_quiz(
+        body.notebook_id,
+        difficulty=body.difficulty,
+        quantity=body.quantity,
+    )
+
+
+class GenerateMindMapBody(BaseModel):
+    notebook_id: str
+
+
+@app.post("/api/generate/mind-map", dependencies=[Depends(require_token)])
+async def generate_mind_map(body: GenerateMindMapBody) -> dict[str, object]:
+    return await nlm.generate_mind_map(body.notebook_id)
+
+
+@app.get("/api/notebooks/{notebook_id}/artifacts", dependencies=[Depends(require_token)])
+async def artifacts_list(notebook_id: str) -> dict[str, object]:
+    return {"artifacts": await nlm.list_artifacts(notebook_id)}
+
+
+@app.get(
+    "/api/notebooks/{notebook_id}/artifacts/{artifact_id}",
+    dependencies=[Depends(require_token)],
+)
+async def artifact_get(notebook_id: str, artifact_id: str) -> dict[str, object]:
+    art = await nlm.get_artifact(notebook_id, artifact_id)
+    if not art:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return {"artifact": art}
+
+
+@app.get(
+    "/api/notebooks/{notebook_id}/artifacts/{artifact_id}/download",
+    dependencies=[Depends(require_token)],
+)
+async def artifact_download(
+    notebook_id: str,
+    artifact_id: str,
+    type: str = Query(..., description="audio|video|report|quiz|flashcards|mind_map|data_table|slide_deck|infographic"),
+) -> FileResponse:
+    path = await nlm.download_artifact(notebook_id, artifact_id, type)
+    if not Path(path).exists():
+        raise HTTPException(status_code=404, detail="Downloaded file missing")
+    return FileResponse(path, filename=Path(path).name)
+
+
+# Static frontend
+_static_dir = Path(__file__).parent / "static"
+if _static_dir.exists():
+    app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")

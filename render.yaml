@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: notebooklm-yt
+    runtime: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.4
+      - key: APP_TOKEN
+        sync: false
+      - key: NOTEBOOKLM_AUTH_JSON
+        sync: false
+      - key: NOTEBOOKLM_HOME
+        value: /tmp/notebooklm
+      - key: ARTIFACTS_DIR
+        value: /tmp/notebooklm-artifacts
+      - key: CORS_ORIGINS
+        value: "*"
