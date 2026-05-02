@@ -99,6 +99,53 @@ function activateTab(name) {
 }
 $$(".tab-btn").forEach((b) => b.addEventListener("click", () => activateTab(b.dataset.tab)));
 
+// ---------- web search ----------
+async function doWebSearch() {
+  const q = $("#web-input").value.trim();
+  if (!q) return;
+  $("#web-status").textContent = "Aranıyor…";
+  $("#web-results").innerHTML = "";
+  const t0 = performance.now();
+  try {
+    const data = await api(`/api/web/search?q=${encodeURIComponent(q)}&n=10`);
+    const dt = ((performance.now() - t0) / 1000).toFixed(1);
+    $("#web-status").textContent = `${data.count} sonuç · ${dt}s`;
+    renderWebResults(data.results);
+  } catch (e) {
+    $("#web-status").textContent = "Hata: " + e.message;
+  }
+}
+$("#web-btn").addEventListener("click", doWebSearch);
+$("#web-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") doWebSearch();
+});
+
+function renderWebResults(items) {
+  const ul = $("#web-results");
+  ul.innerHTML = "";
+  for (const it of items) {
+    if (!it.url) continue;
+    const li = document.createElement("li");
+    const checked = selected.has(it.url) ? "checked" : "";
+    li.className = "rounded-xl border border-slate-200 bg-white p-3";
+    li.innerHTML = `
+      <label class="flex gap-3 cursor-pointer">
+        <input type="checkbox" data-url="${it.url}" ${checked} class="mt-1 h-5 w-5 shrink-0 rounded border-slate-300 text-brand-600" />
+        <div class="min-w-0 flex-1">
+          <div class="line-clamp-2 text-sm font-medium">${escapeHtml(it.title || it.url)}</div>
+          <div class="mt-0.5 truncate text-xs text-emerald-700">${escapeHtml(it.site || "")}</div>
+          <div class="line-clamp-2 mt-1 text-xs text-slate-500">${escapeHtml(it.description || "")}</div>
+        </div>
+      </label>`;
+    li.querySelector("input").addEventListener("change", (e) => {
+      if (e.target.checked) selected.set(it.url, { title: it.title, channel: it.site });
+      else selected.delete(it.url);
+      updateFab();
+    });
+    ul.appendChild(li);
+  }
+}
+
 // ---------- search ----------
 async function doSearch() {
   const q = $("#search-input").value.trim();

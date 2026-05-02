@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
     render_api_key: str = ""
     render_service_id: str = ""
+    firecrawl_api_key: str = ""
 
 
 settings = Settings()

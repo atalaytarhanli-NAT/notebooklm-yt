@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from . import nlm, render_api
 from .auth import require_token
 from .config import settings
+from .web_search import search_web
 from .youtube import refresh_cookies as _yt_refresh_cookies, search_youtube
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -50,6 +51,15 @@ async def youtube_search(
     dates: bool = Query(False, description="Include upload_date in results (slower; default off — fetch separately via /api/youtube/dates)"),
 ) -> dict[str, object]:
     results = await search_youtube(q, n, with_dates=dates)
+    return {"query": q, "count": len(results), "results": results}
+
+
+@app.get("/api/web/search", dependencies=[Depends(require_token)])
+async def web_search(
+    q: str = Query(..., min_length=1),
+    n: int = Query(10, ge=1, le=30),
+) -> dict[str, object]:
+    results = await search_web(q, n)
     return {"query": q, "count": len(results), "results": results}
 
 

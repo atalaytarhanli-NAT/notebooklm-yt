@@ -48,7 +48,8 @@
     <button id="logout" class="rounded-md px-2.5 py-1 text-xs text-slate-500 hover:bg-slate-100">Çıkış</button>
   </div>
   <nav class="mx-auto flex max-w-3xl gap-1 overflow-x-auto px-4 pb-2">
-    <button data-tab="search" class="tab-btn shrink-0 rounded-full px-3 py-1.5 text-sm font-medium">🔍 Ara</button>
+    <button data-tab="search" class="tab-btn shrink-0 rounded-full px-3 py-1.5 text-sm font-medium">🔍 YouTube</button>
+    <button data-tab="web" class="tab-btn shrink-0 rounded-full px-3 py-1.5 text-sm font-medium">🌐 Web</button>
     <button data-tab="notebook" class="tab-btn shrink-0 rounded-full px-3 py-1.5 text-sm font-medium">📚 Defterler</button>
     <button data-tab="generate" class="tab-btn shrink-0 rounded-full px-3 py-1.5 text-sm font-medium">✨ Üret</button>
   </nav>
@@ -71,6 +72,17 @@
       <span id="search-status"></span>
     </div>
     <ul id="search-results" class="space-y-3"></ul>
+  </section>
+
+  <!-- TAB: WEB -->
+  <section data-tab-panel="web" class="hidden space-y-4">
+    <div class="flex gap-2">
+      <input id="web-input" type="search" placeholder="Web'de ara…"
+        class="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
+      <button id="web-btn" class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700">Ara</button>
+    </div>
+    <div class="text-xs text-slate-500"><span id="web-status"></span></div>
+    <ul id="web-results" class="space-y-3"></ul>
   </section>
 
   <!-- TAB: NOTEBOOK -->
