@@ -128,27 +128,40 @@ async function enrichDatesInBackground(items) {
   let done = 0;
   $("#search-status").textContent = `${items.length} sonuç · tarihler yükleniyor…`;
 
+  let consecutiveFails = 0;
+  let aborted = false;
+
   async function worker() {
-    while (queue.length) {
+    while (queue.length && !aborted) {
       const id = queue.shift();
       try {
         const r = await api(`/api/youtube/dates/${encodeURIComponent(id)}`);
         if (r.upload_date) {
+          consecutiveFails = 0;
           const el = document.querySelector(`[data-video-date="${id}"]`);
           if (el) {
             el.textContent = r.upload_date;
             el.classList.remove("text-slate-300");
             el.classList.add("text-slate-500", "font-medium");
           }
+        } else {
+          consecutiveFails++;
         }
-      } catch {} // ignore individual failures
+      } catch {
+        consecutiveFails++;
+      }
       done++;
+      if (consecutiveFails >= 5) {
+        aborted = true;
+        $("#search-status").textContent = `${items.length} sonuç · tarihler alınamadı`;
+        return;
+      }
       $("#search-status").textContent = `${items.length} sonuç · tarih ${done}/${totalToFetch}`;
     }
   }
   const workers = Array.from({ length: Math.min(concurrency, queue.length) }, () => worker());
   await Promise.all(workers);
-  $("#search-status").textContent = `${items.length} sonuç`;
+  if (!aborted) $("#search-status").textContent = `${items.length} sonuç`;
 }
 $("#search-btn").addEventListener("click", doSearch);
 $("#search-input").addEventListener("keydown", (e) => {
