@@ -123,6 +123,7 @@ class GenerateAudioBody(BaseModel):
     instructions: str | None = None
     audio_format: str | None = None  # deep_dive | brief | critique | debate
     audio_length: str | None = None  # short | default | long
+    language: str | None = None  # e.g. tr, en, zh_Hans
 
 
 @app.post("/api/generate/audio", dependencies=[Depends(require_token)])
@@ -132,6 +133,7 @@ async def generate_audio(body: GenerateAudioBody) -> dict[str, object]:
         instructions=body.instructions,
         audio_format=body.audio_format,
         audio_length=body.audio_length,
+        language=body.language,
     )
 
 
@@ -139,6 +141,7 @@ class GenerateReportBody(BaseModel):
     notebook_id: str
     report_format: str = "briefing_doc"  # briefing_doc | study_guide | blog_post | custom
     extra_instructions: str | None = None
+    language: str | None = None
 
 
 @app.post("/api/generate/report", dependencies=[Depends(require_token)])
@@ -147,6 +150,7 @@ async def generate_report(body: GenerateReportBody) -> dict[str, object]:
         body.notebook_id,
         report_format=body.report_format,
         extra_instructions=body.extra_instructions,
+        language=body.language,
     )
 
 
@@ -154,6 +158,7 @@ class GenerateQuizBody(BaseModel):
     notebook_id: str
     difficulty: str | None = None  # easy | medium | hard
     quantity: str | None = None  # fewer | standard
+    language: str | None = None
 
 
 @app.post("/api/generate/quiz", dependencies=[Depends(require_token)])
@@ -162,6 +167,7 @@ async def generate_quiz(body: GenerateQuizBody) -> dict[str, object]:
         body.notebook_id,
         difficulty=body.difficulty,
         quantity=body.quantity,
+        language=body.language,
     )
 
 
@@ -177,11 +183,37 @@ async def generate_mind_map(body: GenerateMindMapBody) -> dict[str, object]:
 class GenerateSlideDeckBody(BaseModel):
     notebook_id: str
     instructions: str | None = None
+    language: str | None = None
 
 
 @app.post("/api/generate/slide-deck", dependencies=[Depends(require_token)])
 async def generate_slide_deck(body: GenerateSlideDeckBody) -> dict[str, object]:
-    return await nlm.generate_slide_deck(body.notebook_id, instructions=body.instructions)
+    return await nlm.generate_slide_deck(
+        body.notebook_id,
+        instructions=body.instructions,
+        language=body.language,
+    )
+
+
+class GenerateInfographicBody(BaseModel):
+    notebook_id: str
+    instructions: str | None = None
+    orientation: str | None = None  # landscape | portrait | square
+    detail: str | None = None  # concise | standard | detailed
+    style: str | None = None  # auto_select | sketch_note | professional | bento_grid | editorial | instructional | bricks | clay | anime | kawaii | scientific
+    language: str | None = None
+
+
+@app.post("/api/generate/infographic", dependencies=[Depends(require_token)])
+async def generate_infographic(body: GenerateInfographicBody) -> dict[str, object]:
+    return await nlm.generate_infographic(
+        body.notebook_id,
+        instructions=body.instructions,
+        orientation=body.orientation,
+        detail=body.detail,
+        style=body.style,
+        language=body.language,
+    )
 
 
 @app.get("/api/notebooks/{notebook_id}/artifacts", dependencies=[Depends(require_token)])

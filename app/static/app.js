@@ -417,24 +417,31 @@ async function generate(kind) {
   btn.disabled = true;
   btn.textContent = "Üretiliyor…";
   try {
-    let body = { notebook_id: currentNotebookId };
+    const language = $("#gen-language").value || null;
+    const instructions = $("#gen-instructions").value.trim() || null;
+    let body = { notebook_id: currentNotebookId, language };
     let path = "";
     if (kind === "audio") {
       path = "/api/generate/audio";
       body.audio_format = $("#audio-format").value || null;
       body.audio_length = $("#audio-length").value || null;
-      body.instructions = $("#gen-instructions").value.trim() || null;
+      body.instructions = instructions;
     } else if (kind === "report") {
       path = "/api/generate/report";
       body.report_format = $("#report-format").value || "briefing_doc";
-      body.extra_instructions = $("#gen-instructions").value.trim() || null;
+      body.extra_instructions = instructions;
     } else if (kind === "quiz") {
       path = "/api/generate/quiz";
     } else if (kind === "mind_map") {
       path = "/api/generate/mind-map";
     } else if (kind === "slide_deck") {
       path = "/api/generate/slide-deck";
-      body.instructions = $("#gen-instructions").value.trim() || null;
+      body.instructions = instructions;
+    } else if (kind === "infographic") {
+      path = "/api/generate/infographic";
+      body.instructions = instructions;
+      body.orientation = $("#info-orientation").value || null;
+      body.style = $("#info-style").value || null;
     }
     const r = await api(path, { method: "POST", body: JSON.stringify(body) });
     showToast(`${kind} kuyrukta` + (r.task_id ? "" : ""));

@@ -13,6 +13,9 @@ from notebooklm.exceptions import NotebookLMError
 from notebooklm.rpc.types import (
     AudioFormat,
     AudioLength,
+    InfographicDetail,
+    InfographicOrientation,
+    InfographicStyle,
     QuizDifficulty,
     QuizQuantity,
     ReportFormat,
@@ -187,6 +190,7 @@ async def generate_audio(
     instructions: str | None = None,
     audio_format: str | None = None,
     audio_length: str | None = None,
+    language: str | None = None,
 ) -> dict[str, Any]:
     client = await _get_client()
     kwargs: dict[str, Any] = {}
@@ -196,6 +200,8 @@ async def generate_audio(
         kwargs["audio_format"] = _AUDIO_FORMATS[audio_format]
     if audio_length and audio_length in _AUDIO_LENGTHS:
         kwargs["audio_length"] = _AUDIO_LENGTHS[audio_length]
+    if language:
+        kwargs["language"] = language
     try:
         result = await client.artifacts.generate_audio(notebook_id, **kwargs)
     except NotebookLMError as exc:
@@ -211,15 +217,15 @@ async def generate_report(
     notebook_id: str,
     report_format: str = "briefing_doc",
     extra_instructions: str | None = None,
+    language: str | None = None,
 ) -> dict[str, Any]:
     client = await _get_client()
     fmt = _REPORT_FORMATS.get(report_format, ReportFormat.BRIEFING_DOC)
+    kwargs: dict[str, Any] = {"report_format": fmt, "extra_instructions": extra_instructions}
+    if language:
+        kwargs["language"] = language
     try:
-        result = await client.artifacts.generate_report(
-            notebook_id,
-            report_format=fmt,
-            extra_instructions=extra_instructions,
-        )
+        result = await client.artifacts.generate_report(notebook_id, **kwargs)
     except NotebookLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {
@@ -233,6 +239,7 @@ async def generate_quiz(
     notebook_id: str,
     difficulty: str | None = None,
     quantity: str | None = None,
+    language: str | None = None,
 ) -> dict[str, Any]:
     client = await _get_client()
     kwargs: dict[str, Any] = {}
@@ -240,6 +247,8 @@ async def generate_quiz(
         kwargs["difficulty"] = _QUIZ_DIFFICULTIES[difficulty]
     if quantity and quantity in _QUIZ_QUANTITIES:
         kwargs["quantity"] = _QUIZ_QUANTITIES[quantity]
+    if language:
+        kwargs["language"] = language
     try:
         result = await client.artifacts.generate_quiz(notebook_id, **kwargs)
     except NotebookLMError as exc:
@@ -260,11 +269,17 @@ async def generate_mind_map(notebook_id: str) -> dict[str, Any]:
     return {"data": result, "status": "completed", "artifact_type": "mind_map"}
 
 
-async def generate_slide_deck(notebook_id: str, instructions: str | None = None) -> dict[str, Any]:
+async def generate_slide_deck(
+    notebook_id: str,
+    instructions: str | None = None,
+    language: str | None = None,
+) -> dict[str, Any]:
     client = await _get_client()
     kwargs: dict[str, Any] = {}
     if instructions:
         kwargs["instructions"] = instructions
+    if language:
+        kwargs["language"] = language
     try:
         result = await client.artifacts.generate_slide_deck(notebook_id, **kwargs)
     except NotebookLMError as exc:
@@ -273,6 +288,42 @@ async def generate_slide_deck(notebook_id: str, instructions: str | None = None)
         "task_id": getattr(result, "task_id", None) or getattr(result, "artifact_id", None),
         "status": str(getattr(result, "status", "")).split(".")[-1].lower() or "pending",
         "artifact_type": "slide_deck",
+    }
+
+
+_INFOGRAPHIC_ORIENTATIONS = {f.name.lower(): f for f in InfographicOrientation}
+_INFOGRAPHIC_DETAILS = {f.name.lower(): f for f in InfographicDetail}
+_INFOGRAPHIC_STYLES = {f.name.lower(): f for f in InfographicStyle}
+
+
+async def generate_infographic(
+    notebook_id: str,
+    instructions: str | None = None,
+    orientation: str | None = None,
+    detail: str | None = None,
+    style: str | None = None,
+    language: str | None = None,
+) -> dict[str, Any]:
+    client = await _get_client()
+    kwargs: dict[str, Any] = {}
+    if instructions:
+        kwargs["instructions"] = instructions
+    if orientation and orientation in _INFOGRAPHIC_ORIENTATIONS:
+        kwargs["orientation"] = _INFOGRAPHIC_ORIENTATIONS[orientation]
+    if detail and detail in _INFOGRAPHIC_DETAILS:
+        kwargs["detail"] = _INFOGRAPHIC_DETAILS[detail]
+    if style and style in _INFOGRAPHIC_STYLES:
+        kwargs["style"] = _INFOGRAPHIC_STYLES[style]
+    if language:
+        kwargs["language"] = language
+    try:
+        result = await client.artifacts.generate_infographic(notebook_id, **kwargs)
+    except NotebookLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "task_id": getattr(result, "task_id", None) or getattr(result, "artifact_id", None),
+        "status": str(getattr(result, "status", "")).split(".")[-1].lower() or "pending",
+        "artifact_type": "infographic",
     }
 
 
