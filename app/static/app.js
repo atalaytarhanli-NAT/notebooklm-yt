@@ -1,8 +1,6 @@
-const TOKEN_KEY = "nlm_yt_token";
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 
-let token = localStorage.getItem(TOKEN_KEY) || "";
 const selected = new Map(); // url -> { title, channel, thumbnail }
 let notebooksCache = [];
 let currentNotebookId = null;
@@ -18,10 +16,10 @@ function showToast(msg, ms = 2500) {
 }
 
 async function api(path, opts = {}) {
-  const headers = { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...(opts.headers || {}) };
-  const res = await fetch(path, { ...opts, headers });
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  const res = await fetch(path, { ...opts, headers, credentials: "same-origin" });
   if (res.status === 401) {
-    showAuth("Token geçersiz");
+    showAuth("Oturum süresi dolmuş, tekrar giriş yap");
     throw new Error("unauthorized");
   }
   const ct = res.headers.get("content-type") || "";
@@ -59,18 +57,24 @@ function hideAuth() {
 $("#token-submit").addEventListener("click", async () => {
   const v = $("#token-input").value.trim();
   if (!v) return;
-  token = v;
+  $("#token-submit").disabled = true;
+  $("#token-submit").textContent = "Doğrulanıyor…";
   try {
-    const r = await fetch("/api/health", { headers: { Authorization: `Bearer ${token}` } });
-    if (!r.ok) throw new Error();
-    // sanity check token via /api/notebooks
-    const nb = await fetch("/api/notebooks", { headers: { Authorization: `Bearer ${token}` } });
-    if (nb.status === 401) throw new Error("Token reddedildi");
-    localStorage.setItem(TOKEN_KEY, token);
+    const r = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ token: v }),
+    });
+    if (r.status === 401) throw new Error("Token reddedildi");
+    if (!r.ok) throw new Error("HTTP " + r.status);
     hideAuth();
     init();
   } catch (e) {
     showAuth(e.message || "Doğrulama başarısız");
+  } finally {
+    $("#token-submit").disabled = false;
+    $("#token-submit").textContent = "Giriş yap";
   }
 });
 
@@ -78,9 +82,8 @@ $("#token-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") $("#token-submit").click();
 });
 
-$("#logout").addEventListener("click", () => {
-  localStorage.removeItem(TOKEN_KEY);
-  token = "";
+$("#logout").addEventListener("click", async () => {
+  try { await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }); } catch {}
   showAuth();
 });
 
@@ -555,7 +558,7 @@ async function viewArtifact(nbId, a) {
     }
     // Binary-based: audio/video/slide_deck/infographic — fetch as blob, embed
     const url = `/api/notebooks/${nbId}/artifacts/${a.id}/download?type=${encodeURIComponent(t)}&inline=true`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(url, { credentials: "same-origin" });
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
     const blob = await res.blob();
     const blobUrl = URL.createObjectURL(blob);
@@ -621,7 +624,7 @@ async function downloadArtifact(nbId, a) {
   showToast("İndiriliyor…");
   try {
     const url = `/api/notebooks/${nbId}/artifacts/${a.id}/download?type=${encodeURIComponent(a.type)}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(url, { credentials: "same-origin" });
     if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
     const blob = await res.blob();
     const dlUrl = URL.createObjectURL(blob);
@@ -643,9 +646,23 @@ async function init() {
   await loadNotebooks();
 }
 
-if (token) {
-  hideAuth();
-  init();
-} else {
+async function checkAuthAndStart() {
+  // Try a protected endpoint with the cookie. 200 = authed, 401 = need login.
+  try {
+    const r = await fetch("/api/notebooks", { credentials: "same-origin" });
+    if (r.ok) {
+      hideAuth();
+      init();
+      return;
+    }
+  } catch {}
   showAuth();
+}
+checkAuthAndStart();
+
+// Service worker for PWA installability + offline-tolerant assets
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
 }

@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -33,6 +33,34 @@ app.add_middleware(
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+class LoginBody(BaseModel):
+    token: str
+
+
+@app.post("/api/auth/login")
+async def auth_login(body: LoginBody, response: Response) -> dict[str, object]:
+    if not settings.app_token or settings.app_token == "change-me-in-production":
+        raise HTTPException(status_code=500, detail="APP_TOKEN env var is not configured on the server")
+    if body.token != settings.app_token:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    response.set_cookie(
+        key="app_token",
+        value=body.token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 365,  # 1 year
+        path="/",
+    )
+    return {"ok": True}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(response: Response) -> dict[str, object]:
+    response.delete_cookie("app_token", path="/")
+    return {"ok": True}
 
 
 @app.get("/api/auth/check", dependencies=[Depends(require_token)])
