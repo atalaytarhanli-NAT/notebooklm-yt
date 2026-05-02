@@ -39,7 +39,7 @@ async def _get_client() -> NotebookLMClient:
             os.environ["NOTEBOOKLM_AUTH_JSON"] = settings.notebooklm_auth_json
         try:
             client = await NotebookLMClient.from_storage()
-            await client.connect()
+            await client.__aenter__()
         except FileNotFoundError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -60,7 +60,7 @@ async def reset_client() -> None:
     async with _client_lock:
         if _client is not None:
             try:
-                await _client.close()
+                await _client.__aexit__(None, None, None)
             except Exception:
                 pass
             _client = None
