@@ -335,6 +335,9 @@ async function generate(kind) {
       path = "/api/generate/quiz";
     } else if (kind === "mind_map") {
       path = "/api/generate/mind-map";
+    } else if (kind === "slide_deck") {
+      path = "/api/generate/slide-deck";
+      body.instructions = $("#gen-instructions").value.trim() || null;
     }
     const r = await api(path, { method: "POST", body: JSON.stringify(body) });
     showToast(`${kind} kuyrukta` + (r.task_id ? "" : ""));
@@ -370,20 +373,21 @@ function renderArtifacts(items, nbId) {
   for (const a of items) {
     const li = document.createElement("li");
     const pending = a.status && a.status !== "completed";
-    li.className = "flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2";
+    li.className = "rounded-lg border border-slate-200 px-3 py-2";
     li.innerHTML = `
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-2">
-          <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono uppercase">${a.type || "?"}</span>
-          <span class="truncate text-sm">${escapeHtml(a.title || "(başlıksız)")}</span>
-        </div>
-        <div class="text-xs text-slate-400">${a.status || ""}</div>
+      <div class="flex items-center gap-2">
+        <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono uppercase">${a.type || "?"}</span>
+        <span class="min-w-0 flex-1 truncate text-sm">${escapeHtml(a.title || "(başlıksız)")}</span>
+        ${pending ? '<span class="text-xs text-amber-600">⏳</span>' : ''}
       </div>
-      ${pending ? '<span class="text-xs text-amber-600">⏳</span>' : ''}
-      ${!pending ? `<button class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white">İndir</button>` : ""}
+      <div class="mt-1 flex items-center justify-between">
+        <div class="text-xs text-slate-400">${a.status || ""}</div>
+        ${!pending ? '<div class="flex gap-1.5"><button data-act="view" class="rounded-md border border-brand-600 px-2.5 py-1 text-xs font-medium text-brand-600">👁 Görüntüle</button><button data-act="dl" class="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-medium text-white">İndir</button></div>' : ""}
+      </div>
     `;
     if (!pending) {
-      li.querySelector("button").addEventListener("click", () => downloadArtifact(nbId, a));
+      li.querySelector('[data-act="view"]').addEventListener("click", () => viewArtifact(nbId, a));
+      li.querySelector('[data-act="dl"]').addEventListener("click", () => downloadArtifact(nbId, a));
     } else {
       // auto-poll
       if (!pollers.has(a.id)) {
@@ -401,6 +405,112 @@ function renderArtifacts(items, nbId) {
       pollers.delete(aid);
     }
   }
+}
+
+// ---------- viewer ----------
+function openViewer(title, bodyHtml) {
+  $("#viewer-title").textContent = title;
+  $("#viewer-body").innerHTML = bodyHtml;
+  $("#viewer-modal").classList.remove("hidden");
+}
+function closeViewer() {
+  $("#viewer-modal").classList.add("hidden");
+  // revoke any blob URLs
+  $("#viewer-body").querySelectorAll("[data-blob-url]").forEach((el) => URL.revokeObjectURL(el.dataset.blobUrl));
+  $("#viewer-body").innerHTML = "";
+}
+$("#viewer-close").addEventListener("click", closeViewer);
+$("#viewer-modal").addEventListener("click", (e) => {
+  if (e.target.id === "viewer-modal") closeViewer();
+});
+
+async function viewArtifact(nbId, a) {
+  showToast("Yükleniyor…");
+  $("#viewer-download").onclick = () => downloadArtifact(nbId, a);
+  try {
+    const t = a.type;
+    // Text-based: report (md), quiz/mind_map/flashcards (json), data_table (csv)
+    if (["report", "quiz", "mind_map", "flashcards", "data_table"].includes(t)) {
+      const r = await api(`/api/notebooks/${nbId}/artifacts/${a.id}/preview?type=${encodeURIComponent(t)}`);
+      let html = "";
+      if (t === "report") {
+        const md = r.content || "";
+        html = `<article class="prose prose-slate max-w-3xl mx-auto p-6 text-slate-900">${window.marked ? window.marked.parse(md) : `<pre class="whitespace-pre-wrap text-sm">${escapeHtml(md)}</pre>`}</article>`;
+      } else if (t === "quiz" || t === "mind_map" || t === "flashcards") {
+        try {
+          const data = JSON.parse(r.content);
+          html = renderJsonContent(t, data);
+        } catch {
+          html = `<pre class="whitespace-pre-wrap p-4 text-sm">${escapeHtml(r.content)}</pre>`;
+        }
+      } else {
+        html = `<pre class="whitespace-pre-wrap p-4 text-sm">${escapeHtml(r.content || "")}</pre>`;
+      }
+      openViewer(a.title || a.type, html);
+      return;
+    }
+    // Binary-based: audio/video/slide_deck/infographic — fetch as blob, embed
+    const url = `/api/notebooks/${nbId}/artifacts/${a.id}/download?type=${encodeURIComponent(t)}&inline=true`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    let html = "";
+    if (t === "audio") {
+      html = `<div class="flex items-center justify-center p-6"><audio controls autoplay class="w-full max-w-2xl" data-blob-url="${blobUrl}" src="${blobUrl}"></audio></div>`;
+    } else if (t === "video") {
+      html = `<div class="flex items-center justify-center p-2"><video controls autoplay class="max-h-full max-w-full" data-blob-url="${blobUrl}" src="${blobUrl}"></video></div>`;
+    } else if (t === "slide_deck") {
+      html = `<iframe class="h-full w-full" data-blob-url="${blobUrl}" src="${blobUrl}"></iframe>`;
+    } else if (t === "infographic") {
+      html = `<div class="flex items-center justify-center p-2"><img class="max-h-full max-w-full" data-blob-url="${blobUrl}" src="${blobUrl}" /></div>`;
+    } else {
+      html = `<a class="block p-4 text-brand-600 underline" data-blob-url="${blobUrl}" href="${blobUrl}" target="_blank">İçeriği aç</a>`;
+    }
+    openViewer(a.title || a.type, html);
+  } catch (e) {
+    showToast("Görüntüleme hatası: " + e.message);
+  }
+}
+
+function renderJsonContent(type, data) {
+  if (type === "quiz" && Array.isArray(data?.questions || data)) {
+    const qs = data.questions || data;
+    return `<div class="prose prose-slate max-w-3xl mx-auto p-6">
+      <h1>Quiz</h1>
+      <ol class="space-y-4">${qs.map((q, i) => `
+        <li>
+          <p class="font-medium">${escapeHtml(q.question || q.q || "")}</p>
+          ${Array.isArray(q.options || q.choices) ? `<ul class="ml-4 mt-1 space-y-1">${(q.options || q.choices).map((o) => `<li>${escapeHtml(typeof o === "string" ? o : (o.text || ""))}</li>`).join("")}</ul>` : ""}
+          ${q.answer || q.correct ? `<details class="mt-1 text-sm text-slate-600"><summary>Cevap</summary><div class="mt-1">${escapeHtml(String(q.answer || q.correct))}</div></details>` : ""}
+        </li>`).join("")}
+      </ol></div>`;
+  }
+  if (type === "mind_map") {
+    return `<div class="prose prose-slate max-w-3xl mx-auto p-6"><h1>Zihin Haritası</h1>${renderMindNode(data)}</div>`;
+  }
+  if (type === "flashcards" && Array.isArray(data?.cards || data)) {
+    const cs = data.cards || data;
+    return `<div class="prose prose-slate max-w-3xl mx-auto p-6">
+      <h1>Flashcards</h1>
+      <ul class="space-y-3">${cs.map((c) => `
+        <li class="rounded border border-slate-200 p-3">
+          <p class="font-medium">${escapeHtml(c.front || c.q || "")}</p>
+          <details class="mt-1 text-sm"><summary>Arka yüz</summary><p class="mt-1">${escapeHtml(c.back || c.a || "")}</p></details>
+        </li>`).join("")}</ul></div>`;
+  }
+  return `<pre class="whitespace-pre-wrap p-4 text-xs">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+}
+
+function renderMindNode(node, depth = 0) {
+  if (!node || typeof node !== "object") return "";
+  const label = node.title || node.label || node.text || node.name || "";
+  const children = node.children || node.nodes || node.subtopics || [];
+  const padding = depth === 0 ? "" : "ml-4";
+  return `<div class="${padding}">
+    <div class="font-${depth === 0 ? "bold" : "medium"}">${escapeHtml(label)}</div>
+    ${Array.isArray(children) && children.length ? `<div class="mt-1 space-y-1">${children.map((c) => renderMindNode(c, depth + 1)).join("")}</div>` : ""}
+  </div>`;
 }
 
 async function downloadArtifact(nbId, a) {

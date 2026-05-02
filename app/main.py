@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from . import nlm, render_api
 from .auth import require_token
 from .config import settings
-from .youtube import search_youtube
+from .youtube import refresh_cookies as _yt_refresh_cookies, search_youtube
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -142,6 +142,16 @@ async def generate_mind_map(body: GenerateMindMapBody) -> dict[str, object]:
     return await nlm.generate_mind_map(body.notebook_id)
 
 
+class GenerateSlideDeckBody(BaseModel):
+    notebook_id: str
+    instructions: str | None = None
+
+
+@app.post("/api/generate/slide-deck", dependencies=[Depends(require_token)])
+async def generate_slide_deck(body: GenerateSlideDeckBody) -> dict[str, object]:
+    return await nlm.generate_slide_deck(body.notebook_id, instructions=body.instructions)
+
+
 @app.get("/api/notebooks/{notebook_id}/artifacts", dependencies=[Depends(require_token)])
 async def artifacts_list(notebook_id: str) -> dict[str, object]:
     return {"artifacts": await nlm.list_artifacts(notebook_id)}
@@ -158,6 +168,19 @@ async def artifact_get(notebook_id: str, artifact_id: str) -> dict[str, object]:
     return {"artifact": art}
 
 
+_INLINE_MEDIA_TYPES = {
+    "audio": "audio/mpeg",
+    "video": "video/mp4",
+    "report": "text/markdown; charset=utf-8",
+    "quiz": "application/json",
+    "flashcards": "application/json",
+    "mind_map": "application/json",
+    "data_table": "text/csv; charset=utf-8",
+    "slide_deck": "application/pdf",
+    "infographic": "image/png",
+}
+
+
 @app.get(
     "/api/notebooks/{notebook_id}/artifacts/{artifact_id}/download",
     dependencies=[Depends(require_token)],
@@ -166,11 +189,38 @@ async def artifact_download(
     notebook_id: str,
     artifact_id: str,
     type: str = Query(..., description="audio|video|report|quiz|flashcards|mind_map|data_table|slide_deck|infographic"),
+    inline: bool = Query(False, description="If true, serve inline (for in-browser preview) with no download header"),
 ) -> FileResponse:
     path = await nlm.download_artifact(notebook_id, artifact_id, type)
     if not Path(path).exists():
         raise HTTPException(status_code=404, detail="Downloaded file missing")
-    return FileResponse(path, filename=Path(path).name)
+    media_type = _INLINE_MEDIA_TYPES.get(type)
+    if inline:
+        return FileResponse(path, media_type=media_type, headers={"Content-Disposition": "inline"})
+    return FileResponse(path, filename=Path(path).name, media_type=media_type)
+
+
+@app.get(
+    "/api/notebooks/{notebook_id}/artifacts/{artifact_id}/preview",
+    dependencies=[Depends(require_token)],
+)
+async def artifact_preview(notebook_id: str, artifact_id: str, type: str = Query(...)) -> dict[str, object]:
+    """Return artifact content as JSON-friendly text for in-browser rendering.
+
+    For text-based types (report=markdown, quiz/mind_map/flashcards=json,
+    data_table=csv) returns the raw text. For binary types returns a URL the
+    browser can load with credentials (audio/video/pdf/png served via the
+    normal download endpoint with inline=true).
+    """
+    if type in {"report", "quiz", "mind_map", "flashcards", "data_table"}:
+        path = await nlm.download_artifact(notebook_id, artifact_id, type)
+        if not Path(path).exists():
+            raise HTTPException(status_code=404, detail="File missing")
+        text = Path(path).read_text(encoding="utf-8", errors="replace")
+        return {"kind": "text", "type": type, "content": text}
+    if type in {"audio", "video", "slide_deck", "infographic"}:
+        return {"kind": "media", "type": type}
+    raise HTTPException(status_code=400, detail=f"Preview not supported for type: {type}")
 
 
 class RefreshAuthBody(BaseModel):
@@ -204,11 +254,15 @@ async def admin_refresh_auth(body: RefreshAuthBody) -> dict[str, object]:
         logger.exception("Render API update failed")
         raise HTTPException(status_code=502, detail=f"Render API error: {exc}") from exc
 
+    # Hot-reload: update os.environ so the new value is visible without restart
+    os.environ["NOTEBOOKLM_AUTH_JSON"] = payload
+    settings.notebooklm_auth_json = payload
     await nlm.reset_client()
+    _yt_refresh_cookies()
 
     return {
         "ok": True,
-        "message": "NOTEBOOKLM_AUTH_JSON updated. Render will redeploy in ~1-2 minutes.",
+        "message": "NOTEBOOKLM_AUTH_JSON updated. Render will redeploy; in-process state already refreshed.",
         "render": result,
         "cookie_count": len(parsed.get("cookies", [])),
     }

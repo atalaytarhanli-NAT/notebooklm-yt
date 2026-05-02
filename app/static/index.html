@@ -102,6 +102,7 @@
         <button data-gen="report" class="gen-btn rounded-lg border border-slate-200 px-3 py-3 text-sm font-medium hover:bg-slate-50">📄 Rapor</button>
         <button data-gen="quiz" class="gen-btn rounded-lg border border-slate-200 px-3 py-3 text-sm font-medium hover:bg-slate-50">❓ Quiz</button>
         <button data-gen="mind_map" class="gen-btn rounded-lg border border-slate-200 px-3 py-3 text-sm font-medium hover:bg-slate-50">🧠 Zihin Haritası</button>
+        <button data-gen="slide_deck" class="gen-btn col-span-2 rounded-lg border border-slate-200 px-3 py-3 text-sm font-medium hover:bg-slate-50">📊 Slayt Sunumu (PDF)</button>
       </div>
       <details class="mt-3">
         <summary class="cursor-pointer text-xs text-slate-500">Gelişmiş seçenekler</summary>
@@ -179,6 +180,22 @@
 <!-- Toast -->
 <div id="toast" class="fixed bottom-20 left-1/2 z-50 hidden -translate-x-1/2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white shadow-lg"></div>
 
+<!-- Viewer modal -->
+<div id="viewer-modal" class="fixed inset-0 z-50 hidden bg-black/70">
+  <div class="flex h-full flex-col">
+    <div class="flex items-center justify-between bg-slate-900 px-4 py-3 text-white">
+      <h2 id="viewer-title" class="truncate text-sm font-semibold"></h2>
+      <div class="flex items-center gap-2">
+        <button id="viewer-download" class="rounded bg-brand-600 px-3 py-1 text-xs">İndir</button>
+        <button id="viewer-close" class="rounded bg-slate-700 px-3 py-1 text-xs">Kapat</button>
+      </div>
+    </div>
+    <div id="viewer-body" class="flex-1 overflow-auto bg-white"></div>
+  </div>
+</div>
+
+<!-- Marked CDN for MD rendering (loaded once) -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

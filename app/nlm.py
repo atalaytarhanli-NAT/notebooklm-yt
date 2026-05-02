@@ -218,6 +218,22 @@ async def generate_mind_map(notebook_id: str) -> dict[str, Any]:
     return {"data": result, "status": "completed", "artifact_type": "mind_map"}
 
 
+async def generate_slide_deck(notebook_id: str, instructions: str | None = None) -> dict[str, Any]:
+    client = await _get_client()
+    kwargs: dict[str, Any] = {}
+    if instructions:
+        kwargs["instructions"] = instructions
+    try:
+        result = await client.artifacts.generate_slide_deck(notebook_id, **kwargs)
+    except NotebookLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "task_id": getattr(result, "task_id", None) or getattr(result, "artifact_id", None),
+        "status": str(getattr(result, "status", "")).split(".")[-1].lower() or "pending",
+        "artifact_type": "slide_deck",
+    }
+
+
 async def list_artifacts(notebook_id: str) -> list[dict[str, Any]]:
     client = await _get_client()
     try:
