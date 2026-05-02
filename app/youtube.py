@@ -111,6 +111,9 @@ def _enrich_with_upload_date(entry: dict[str, Any], cookies_file: str | None) ->
     opts: dict[str, Any] = dict(_BASE_OPTS)
     opts["ignoreerrors"] = True
     opts["socket_timeout"] = _PER_VIDEO_TIMEOUT
+    # Try multiple player clients — server IPs (Render, etc.) often blocked from
+    # default 'web' client; mweb/android still work in many cases.
+    opts["extractor_args"] = {"youtube": {"player_client": ["mweb", "ios", "android"]}}
     if cookies_file:
         opts["cookiefile"] = cookies_file
     url = f"https://www.youtube.com/watch?v={vid}"
