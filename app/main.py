@@ -227,6 +227,41 @@ async def artifact_preview(notebook_id: str, artifact_id: str, type: str = Query
     raise HTTPException(status_code=400, detail=f"Preview not supported for type: {type}")
 
 
+@app.get("/api/admin/diag", dependencies=[Depends(require_token)])
+async def admin_diag() -> dict[str, object]:
+    """Debug helper: show cookie file state + sample yt-dlp call result."""
+    from pathlib import Path as _P
+    import time as _t
+    from .youtube import _write_youtube_cookies, _enrich_with_upload_date, _DATE_CACHE
+
+    cookies_path = _write_youtube_cookies()
+    cookies_info: dict[str, object] = {"path": cookies_path}
+    if cookies_path and _P(cookies_path).exists():
+        text = _P(cookies_path).read_text(encoding="utf-8")
+        cookies_info["size"] = len(text)
+        cookies_info["lines"] = text.count("\n")
+
+    # Sample enrichment call
+    t = _t.monotonic()
+    test_entry = {"id": "iWS9ogMPOI0"}  # known FastAPI tutorial video
+    try:
+        enriched = _enrich_with_upload_date(test_entry, cookies_path)
+        sample_result: dict[str, object] = {
+            "elapsed_s": round(_t.monotonic() - t, 2),
+            "upload_date": enriched.get("upload_date"),
+            "ok": bool(enriched.get("upload_date")),
+        }
+    except Exception as exc:
+        sample_result = {"elapsed_s": round(_t.monotonic() - t, 2), "error": str(exc)}
+
+    return {
+        "cookies": cookies_info,
+        "sample_enrich": sample_result,
+        "cache_size": len(_DATE_CACHE),
+        "render_api_configured": bool(settings.render_api_key and settings.render_service_id),
+    }
+
+
 class RefreshAuthBody(BaseModel):
     storage_state: str = Field(..., min_length=10)
 
