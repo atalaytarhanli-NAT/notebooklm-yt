@@ -108,13 +108,47 @@ async function doSearch() {
   $("#search-results").innerHTML = "";
   const t0 = performance.now();
   try {
-    const data = await api(`/api/youtube/search?q=${encodeURIComponent(q)}&n=12&dates=${withDates}`);
+    const data = await api(`/api/youtube/search?q=${encodeURIComponent(q)}&n=12&dates=false`);
     const dt = ((performance.now() - t0) / 1000).toFixed(1);
     $("#search-status").textContent = `${data.count} sonuç · ${dt}s`;
     renderResults(data.results);
+    if (withDates) {
+      enrichDatesInBackground(data.results);
+    }
   } catch (e) {
     $("#search-status").textContent = "Hata: " + e.message;
   }
+}
+
+// Fetch dates in background, throttled, update DOM as they arrive
+async function enrichDatesInBackground(items) {
+  const concurrency = 4;
+  const queue = items.filter((it) => it.id && !it.upload_date).map((it) => it.id);
+  const totalToFetch = queue.length;
+  let done = 0;
+  $("#search-status").textContent = `${items.length} sonuç · tarihler yükleniyor…`;
+
+  async function worker() {
+    while (queue.length) {
+      const id = queue.shift();
+      try {
+        const r = await api(`/api/youtube/dates/${encodeURIComponent(id)}`);
+        if (r.upload_date) {
+          const el = document.querySelector(`[data-video-date="${id}"]`);
+          if (el) {
+            el.textContent = r.upload_date;
+            el.classList.remove("text-slate-300");
+            el.classList.add("text-slate-500", "font-medium");
+          }
+        }
+      } catch {} // ignore individual failures
+      done++;
+      $("#search-status").textContent = `${items.length} sonuç · tarih ${done}/${totalToFetch}`;
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, () => worker());
+  await Promise.all(workers);
+  $("#search-status").textContent = `${items.length} sonuç`;
 }
 $("#search-btn").addEventListener("click", doSearch);
 $("#search-input").addEventListener("keydown", (e) => {
@@ -139,7 +173,7 @@ function renderResults(items) {
             <div class="min-w-0 flex-1">
               <div class="line-clamp-2 text-sm font-medium">${escapeHtml(it.title || "")}</div>
               <div class="mt-1 truncate text-xs text-slate-500">${escapeHtml(it.channel || "")}</div>
-              <div class="mt-1 text-xs text-slate-500">${fmtViews(it.view_count)} görüntülenme · ${it.duration_string || "—"} · ${it.upload_date || ""}</div>
+              <div class="mt-1 text-xs text-slate-500">${fmtViews(it.view_count)} görüntülenme · ${it.duration_string || "—"} · <span data-video-date="${it.id || ""}" class="${it.upload_date ? "text-slate-500 font-medium" : "text-slate-300"}">${it.upload_date || "—"}</span></div>
             </div>
           </div>
         </div>

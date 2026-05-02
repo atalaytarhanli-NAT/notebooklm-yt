@@ -47,10 +47,28 @@ async def auth_check() -> dict[str, object]:
 async def youtube_search(
     q: str = Query(..., min_length=1),
     n: int = Query(10, ge=1, le=50),
-    dates: bool = Query(True, description="Include upload_date in results (slower)"),
+    dates: bool = Query(False, description="Include upload_date in results (slower; default off — fetch separately via /api/youtube/dates)"),
 ) -> dict[str, object]:
     results = await search_youtube(q, n, with_dates=dates)
     return {"query": q, "count": len(results), "results": results}
+
+
+@app.get("/api/youtube/dates/{video_id}", dependencies=[Depends(require_token)])
+async def youtube_date(video_id: str) -> dict[str, object]:
+    """Fetch single video upload_date (uses cache; safe to call in parallel)."""
+    from .youtube import _enrich_with_upload_date, _write_youtube_cookies, _DATE_CACHE
+    import asyncio as _asyncio
+
+    if video_id in _DATE_CACHE:
+        return {"id": video_id, "upload_date": _DATE_CACHE[video_id], "source": "cache"}
+
+    cookies_file = _write_youtube_cookies()
+
+    def _do() -> dict[str, object]:
+        entry = _enrich_with_upload_date({"id": video_id}, cookies_file)
+        return {"id": video_id, "upload_date": entry.get("upload_date"), "source": "fetch"}
+
+    return await _asyncio.to_thread(_do)
 
 
 @app.get("/api/notebooks", dependencies=[Depends(require_token)])
