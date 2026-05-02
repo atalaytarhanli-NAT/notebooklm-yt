@@ -63,7 +63,13 @@
         class="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30" />
       <button id="search-btn" class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700">Ara</button>
     </div>
-    <div id="search-status" class="text-sm text-slate-500"></div>
+    <div class="flex items-center justify-between text-xs text-slate-500">
+      <label class="flex items-center gap-1.5 cursor-pointer">
+        <input id="search-dates" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-brand-600" />
+        <span>Yayın tarihlerini göster (+5sn)</span>
+      </label>
+      <span id="search-status"></span>
+    </div>
     <ul id="search-results" class="space-y-3"></ul>
   </section>
 

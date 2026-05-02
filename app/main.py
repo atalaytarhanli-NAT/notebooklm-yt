@@ -44,8 +44,12 @@ async def auth_check() -> dict[str, object]:
 
 
 @app.get("/api/youtube/search", dependencies=[Depends(require_token)])
-async def youtube_search(q: str = Query(..., min_length=1), n: int = Query(10, ge=1, le=50)) -> dict[str, object]:
-    results = await search_youtube(q, n)
+async def youtube_search(
+    q: str = Query(..., min_length=1),
+    n: int = Query(10, ge=1, le=50),
+    dates: bool = Query(True, description="Include upload_date in results (slower)"),
+) -> dict[str, object]:
+    results = await search_youtube(q, n, with_dates=dates)
     return {"query": q, "count": len(results), "results": results}
 
 

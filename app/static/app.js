@@ -103,11 +103,14 @@ $$(".tab-btn").forEach((b) => b.addEventListener("click", () => activateTab(b.da
 async function doSearch() {
   const q = $("#search-input").value.trim();
   if (!q) return;
+  const withDates = $("#search-dates").checked;
   $("#search-status").textContent = "Aranıyor…";
   $("#search-results").innerHTML = "";
+  const t0 = performance.now();
   try {
-    const data = await api(`/api/youtube/search?q=${encodeURIComponent(q)}&n=12`);
-    $("#search-status").textContent = `${data.count} sonuç`;
+    const data = await api(`/api/youtube/search?q=${encodeURIComponent(q)}&n=12&dates=${withDates}`);
+    const dt = ((performance.now() - t0) / 1000).toFixed(1);
+    $("#search-status").textContent = `${data.count} sonuç · ${dt}s`;
     renderResults(data.results);
   } catch (e) {
     $("#search-status").textContent = "Hata: " + e.message;

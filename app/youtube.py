@@ -89,37 +89,62 @@ def _format_duration(seconds: int | None) -> str | None:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-def _enrich_with_upload_date(entry: dict[str, Any], cookies_file: str | None) -> dict[str, Any]:
-    """Per-video extraction (process=False) to fetch upload_date.
+# In-memory cache: video_id -> upload_date (YYYYMMDD or None for "tried, failed")
+_DATE_CACHE: dict[str, str | None] = {}
+_PER_VIDEO_TIMEOUT = 3.0  # seconds, hard cap per video extraction
+_TOTAL_BUDGET = 6.0  # seconds, max time spent on enrichment per search
 
-    Falls through silently on any error — the entry is still usable without dates.
-    """
-    if entry.get("upload_date") or not entry.get("id"):
+
+def _enrich_with_upload_date(entry: dict[str, Any], cookies_file: str | None) -> dict[str, Any]:
+    vid = entry.get("id")
+    if not vid:
         return entry
+    if entry.get("upload_date"):
+        _DATE_CACHE[vid] = entry["upload_date"]
+        return entry
+    if vid in _DATE_CACHE:
+        cached = _DATE_CACHE[vid]
+        if cached:
+            entry["upload_date"] = cached
+        return entry
+
     opts: dict[str, Any] = dict(_BASE_OPTS)
     opts["ignoreerrors"] = True
+    opts["socket_timeout"] = _PER_VIDEO_TIMEOUT
     if cookies_file:
         opts["cookiefile"] = cookies_file
-    url = f"https://www.youtube.com/watch?v={entry['id']}"
+    url = f"https://www.youtube.com/watch?v={vid}"
     try:
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False, process=False)
     except Exception as exc:
-        logger.debug("upload_date enrichment failed for %s: %s", entry.get("id"), exc)
+        logger.debug("enrich fail %s: %s", vid, exc)
+        _DATE_CACHE[vid] = None
         return entry
     if info:
-        for key in ("upload_date", "timestamp", "release_timestamp"):
-            if info.get(key) and not entry.get(key):
-                entry[key] = info[key]
+        if info.get("upload_date"):
+            entry["upload_date"] = info["upload_date"]
+            _DATE_CACHE[vid] = info["upload_date"]
+        elif info.get("timestamp"):
+            try:
+                from datetime import datetime, timezone
+                dt = datetime.fromtimestamp(info["timestamp"], tz=timezone.utc).strftime("%Y%m%d")
+                entry["upload_date"] = dt
+                _DATE_CACHE[vid] = dt
+            except (TypeError, ValueError, OSError):
+                _DATE_CACHE[vid] = None
+        else:
+            _DATE_CACHE[vid] = None
     return entry
 
 
-def _search_sync(query: str, count: int) -> list[dict[str, Any]]:
+def _search_sync(query: str, count: int, with_dates: bool = True) -> list[dict[str, Any]]:
     count = max(1, min(int(count), 50))
     cookies_file = _write_youtube_cookies()
 
     opts_flat: dict[str, Any] = dict(_BASE_OPTS)
     opts_flat["extract_flat"] = "in_playlist"
+    opts_flat["socket_timeout"] = 8.0
     if cookies_file:
         opts_flat["cookiefile"] = cookies_file
 
@@ -129,11 +154,39 @@ def _search_sync(query: str, count: int) -> list[dict[str, Any]]:
     entries = list((info or {}).get("entries") or [])
     entries = [e for e in entries if e]
 
-    # Enrich with upload_date in parallel (best-effort, skip on failure)
-    if entries:
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=min(8, len(entries))) as pool:
-            entries = list(pool.map(lambda e: _enrich_with_upload_date(e, cookies_file), entries))
+    # Enrich with upload_date — bounded by total budget; on timeout, return partials.
+    if with_dates and entries:
+        import time as _time
+        from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
+        start = _time.monotonic()
+        # Pre-fill from cache (fast path, no thread needed)
+        to_fetch: list[dict[str, Any]] = []
+        for e in entries:
+            vid = e.get("id")
+            if vid and vid in _DATE_CACHE:
+                cached = _DATE_CACHE[vid]
+                if cached:
+                    e["upload_date"] = cached
+            else:
+                to_fetch.append(e)
+        if to_fetch:
+            pool = ThreadPoolExecutor(max_workers=min(4, len(to_fetch)))
+            try:
+                futures = {pool.submit(_enrich_with_upload_date, e, cookies_file): e for e in to_fetch}
+                deadline = start + _TOTAL_BUDGET
+                while futures:
+                    remaining = deadline - _time.monotonic()
+                    if remaining <= 0:
+                        logger.info("enrichment budget exceeded, %d/%d videos enriched",
+                                    len(to_fetch) - len(futures), len(to_fetch))
+                        break
+                    done, _pending = wait(futures.keys(), timeout=remaining, return_when=FIRST_COMPLETED)
+                    if not done:
+                        break  # timeout
+                    for fut in done:
+                        del futures[fut]
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
     out: list[dict[str, Any]] = []
     for e in entries:
         if not e:
@@ -163,5 +216,5 @@ def _search_sync(query: str, count: int) -> list[dict[str, Any]]:
     return out
 
 
-async def search_youtube(query: str, count: int = 5) -> list[dict[str, Any]]:
-    return await asyncio.to_thread(_search_sync, query, count)
+async def search_youtube(query: str, count: int = 5, with_dates: bool = True) -> list[dict[str, Any]]:
+    return await asyncio.to_thread(_search_sync, query, count, with_dates)
