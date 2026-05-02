@@ -88,9 +88,9 @@ for ($i = 1; $i -le $maxAttempts; $i++) {
             Write-Host "URL: $AppUrl" -ForegroundColor Green
             exit 0
         }
-        Write-Host "    deneme $i/$maxAttempts: hala redeploy bekliyor (status: $($check.error.Substring(0, [Math]::Min(80, $check.error.Length)))...)" -ForegroundColor Gray
+        Write-Host "    deneme ${i}/${maxAttempts}: hala redeploy bekliyor" -ForegroundColor Gray
     } catch {
-        Write-Host "    deneme $i/$maxAttempts: server geciici cevap vermiyor (redeploy devam ediyor)" -ForegroundColor Gray
+        Write-Host "    deneme ${i}/${maxAttempts}: server geciici cevap vermiyor (redeploy devam ediyor)" -ForegroundColor Gray
     }
 }
 
