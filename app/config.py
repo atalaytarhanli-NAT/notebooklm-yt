@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     notebooklm_home: str = "/tmp/notebooklm"
     artifacts_dir: str = "/tmp/notebooklm-artifacts"
     cors_origins: str = "*"
+    render_api_key: str = ""
+    render_service_id: str = ""
 
 
 settings = Settings()

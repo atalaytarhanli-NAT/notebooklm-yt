@@ -10,12 +10,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import nlm
+from . import nlm, render_api
 from .auth import require_token
 from .config import settings
 from .youtube import search_youtube
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="notebooklm-yt", version="0.1.0")
 
@@ -170,6 +171,47 @@ async def artifact_download(
     if not Path(path).exists():
         raise HTTPException(status_code=404, detail="Downloaded file missing")
     return FileResponse(path, filename=Path(path).name)
+
+
+class RefreshAuthBody(BaseModel):
+    storage_state: str = Field(..., min_length=10)
+
+
+@app.post("/api/admin/refresh-auth", dependencies=[Depends(require_token)])
+async def admin_refresh_auth(body: RefreshAuthBody) -> dict[str, object]:
+    import json as _json
+
+    payload = body.storage_state.strip()
+    try:
+        parsed = _json.loads(payload)
+    except _json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
+    if not isinstance(parsed, dict) or "cookies" not in parsed:
+        raise HTTPException(status_code=400, detail="storage_state must contain 'cookies'")
+    sid_present = any(c.get("name") == "SID" for c in parsed.get("cookies", []))
+    if not sid_present:
+        raise HTTPException(status_code=400, detail="storage_state missing SID cookie — login may not have completed")
+
+    if not settings.render_api_key or not settings.render_service_id:
+        raise HTTPException(
+            status_code=503,
+            detail="RENDER_API_KEY and RENDER_SERVICE_ID env vars must be configured for auto-refresh",
+        )
+
+    try:
+        result = await render_api.replace_env_var("NOTEBOOKLM_AUTH_JSON", payload)
+    except Exception as exc:
+        logger.exception("Render API update failed")
+        raise HTTPException(status_code=502, detail=f"Render API error: {exc}") from exc
+
+    await nlm.reset_client()
+
+    return {
+        "ok": True,
+        "message": "NOTEBOOKLM_AUTH_JSON updated. Render will redeploy in ~1-2 minutes.",
+        "render": result,
+        "cookie_count": len(parsed.get("cookies", [])),
+    }
 
 
 # Static frontend

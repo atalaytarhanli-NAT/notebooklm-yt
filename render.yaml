@@ -20,3 +20,7 @@ services:
         value: /tmp/notebooklm-artifacts
       - key: CORS_ORIGINS
         value: "*"
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_SERVICE_ID
+        sync: false

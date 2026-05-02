@@ -61,16 +61,45 @@ cat ~/.notebooklm/storage_state.json | tr -d '\n'
 
 ---
 
-## Cookie yenileme (ayda bir)
+## Cookie yenileme (ayda bir, tek komut)
 
 Google oturum cookie'leri ~30 günde bir expire eder. Hata: `NotebookLM auth failed`.
 
-**Yenileme adımları:**
-```bash
+### Bir kerelik setup
+
+1. **Render API key oluştur:** https://dashboard.render.com/u/settings → API Keys → "Create API Key" → kopyala
+2. **Service ID'yi bul:** Render Dashboard → notebooklm-yt → URL'deki ID (örn `srv-xxxxx`)
+3. **Render env var'larına ekle:**
+   - `RENDER_API_KEY` = (yeni oluşturduğun key)
+   - `RENDER_SERVICE_ID` = (`srv-...`)
+   - **Save Changes** → redeploy
+4. **Lokalde APP_TOKEN'ı PowerShell profile'a ekle** (her seferinde set etmemek için):
+   ```powershell
+   notepad $PROFILE
+   # şu satırı ekle:
+   $env:APP_TOKEN = "b_XK1Tn4OOJX..."
+   ```
+
+### Aylık akış (~2 dk)
+
+```powershell
+.\scripts\refresh-cookie.ps1
+```
+
+Bu script:
+1. `notebooklm login` çalıştırır → tarayıcıda Google girişi yapsın
+2. `storage_state.json`'ı okur
+3. App'in `/api/admin/refresh-auth` endpoint'ine POST eder
+4. Endpoint, Render API üzerinden `NOTEBOOKLM_AUTH_JSON` env var'ı update eder
+5. Render otomatik redeploy başlatır
+6. `/api/auth/check` `{ok: true}` dönene kadar bekler
+
+### Manuel fallback (script çalışmazsa)
+
+```powershell
 notebooklm login
-cat ~/.notebooklm/storage_state.json | tr -d '\n'
-# → çıktıyı Render → Settings → Environment → NOTEBOOKLM_AUTH_JSON'a yapıştır
-# → Manual Deploy → Clear cache & deploy
+((Get-Content "$env:USERPROFILE\.notebooklm\storage_state.json" -Raw) -replace "`r`n","") | Set-Clipboard
+# → Render Dashboard → Environment → NOTEBOOKLM_AUTH_JSON → Value: Ctrl+V → Save
 ```
 
 ---
