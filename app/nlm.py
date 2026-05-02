@@ -76,24 +76,66 @@ def _serialize_notebook(nb: Any) -> dict[str, Any]:
     }
 
 
+_SOURCE_STATUS_NAME = {1: "processing", 2: "ready", 3: "error", 5: "preparing"}
+
+
 def _serialize_source(src: Any) -> dict[str, Any]:
     raw_status = getattr(src, "status", None)
+    raw_kind = getattr(src, "kind", None) or getattr(src, "type", None)
+
+    type_str: str | None = None
+    if raw_kind is not None:
+        if hasattr(raw_kind, "value"):
+            type_str = str(raw_kind.value).lower()
+        else:
+            type_str = str(raw_kind).split(".")[-1].lower()
+
+    status_str: str | None = None
+    if raw_status is not None:
+        if hasattr(raw_status, "name"):
+            status_str = raw_status.name.lower()
+        elif isinstance(raw_status, int):
+            status_str = _SOURCE_STATUS_NAME.get(raw_status, str(raw_status))
+        else:
+            status_str = str(raw_status).split(".")[-1].lower()
+
     return {
         "id": getattr(src, "id", None),
         "title": getattr(src, "title", None),
-        "type": str(getattr(src, "type", "")).split(".")[-1].lower() or None,
-        "status": str(raw_status).split(".")[-1].lower() if raw_status else None,
+        "url": getattr(src, "url", None),
+        "type": type_str,
+        "status": status_str,
     }
+
+
+_STATUS_NAME = {1: "processing", 2: "pending", 3: "completed", 4: "failed"}
 
 
 def _serialize_artifact(art: Any) -> dict[str, Any]:
     raw_status = getattr(art, "status", None)
-    raw_type = getattr(art, "type", None)
+    raw_kind = getattr(art, "kind", None) or getattr(art, "type", None)
+
+    type_str: str | None = None
+    if raw_kind is not None:
+        if hasattr(raw_kind, "value"):
+            type_str = str(raw_kind.value).lower()
+        else:
+            type_str = str(raw_kind).split(".")[-1].lower()
+
+    status_str: str | None = None
+    if raw_status is not None:
+        if hasattr(raw_status, "name"):
+            status_str = raw_status.name.lower()
+        elif isinstance(raw_status, int):
+            status_str = _STATUS_NAME.get(raw_status, str(raw_status))
+        else:
+            status_str = str(raw_status).split(".")[-1].lower()
+
     return {
         "id": getattr(art, "id", None),
         "title": getattr(art, "title", None),
-        "type": str(raw_type).split(".")[-1].lower() if raw_type else None,
-        "status": str(raw_status).split(".")[-1].lower() if raw_status else None,
+        "type": type_str,
+        "status": status_str,
     }
 
 
