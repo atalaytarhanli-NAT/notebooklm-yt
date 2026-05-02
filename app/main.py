@@ -241,18 +241,34 @@ async def admin_diag() -> dict[str, object]:
         cookies_info["size"] = len(text)
         cookies_info["lines"] = text.count("\n")
 
-    # Sample enrichment call
+    # Sample enrichment call (raw, with diagnostic detail)
+    from yt_dlp import YoutubeDL
+    from .youtube import _BASE_OPTS
+
     t = _t.monotonic()
-    test_entry = {"id": "iWS9ogMPOI0"}  # known FastAPI tutorial video
+    opts = dict(_BASE_OPTS)
+    opts["ignoreerrors"] = False  # surface errors
+    opts["socket_timeout"] = 10
+    if cookies_path:
+        opts["cookiefile"] = cookies_path
+    sample_result: dict[str, object] = {}
     try:
-        enriched = _enrich_with_upload_date(test_entry, cookies_path)
-        sample_result: dict[str, object] = {
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info("https://www.youtube.com/watch?v=iWS9ogMPOI0", download=False, process=False)
+        sample_result = {
             "elapsed_s": round(_t.monotonic() - t, 2),
-            "upload_date": enriched.get("upload_date"),
-            "ok": bool(enriched.get("upload_date")),
+            "got_info": info is not None,
+            "title": (info or {}).get("title"),
+            "upload_date": (info or {}).get("upload_date"),
+            "timestamp": (info or {}).get("timestamp"),
+            "available_keys": sorted([k for k in (info or {}).keys() if (info or {}).get(k) is not None])[:20] if info else [],
         }
     except Exception as exc:
-        sample_result = {"elapsed_s": round(_t.monotonic() - t, 2), "error": str(exc)}
+        sample_result = {
+            "elapsed_s": round(_t.monotonic() - t, 2),
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:500],
+        }
 
     return {
         "cookies": cookies_info,
