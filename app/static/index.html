@@ -239,7 +239,17 @@
 </div>
 
 <!-- Toast -->
-<div id="toast" class="fixed bottom-20 left-1/2 z-50 hidden -translate-x-1/2 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white shadow-lg"></div>
+<div id="toast" class="fixed bottom-20 left-1/2 z-50 hidden max-w-[calc(100vw-2rem)] -translate-x-1/2 truncate rounded-lg bg-slate-900 px-4 py-2 text-sm text-white shadow-lg"></div>
+
+<!-- Auth-expired banner (NotebookLM cookie down, not app token) -->
+<div id="nlm-banner" class="fixed left-1/2 top-16 z-40 hidden w-[min(calc(100vw-2rem),28rem)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50 p-3 shadow-lg">
+  <div class="text-sm font-medium text-amber-900">⚠ NotebookLM oturumu sona erdi</div>
+  <p class="mt-1 text-xs text-amber-800">
+    Bilgisayarda PowerShell aç, projede şunu çalıştır:
+  </p>
+  <pre class="mt-1 overflow-x-auto rounded bg-amber-100 px-2 py-1 text-[11px] font-mono">.\scripts\refresh-cookie.ps1</pre>
+  <button id="nlm-banner-dismiss" class="mt-2 text-xs text-amber-700 underline">Şimdilik kapat</button>
+</div>
 
 <!-- Viewer modal -->
 <div id="viewer-modal" class="fixed inset-0 z-50 hidden bg-black/70">

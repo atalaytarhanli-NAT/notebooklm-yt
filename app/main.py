@@ -63,6 +63,12 @@ async def auth_logout(response: Response) -> dict[str, object]:
     return {"ok": True}
 
 
+@app.get("/api/auth/whoami", dependencies=[Depends(require_token)])
+async def auth_whoami() -> dict[str, object]:
+    """Lightweight auth probe — confirms cookie is valid without calling NotebookLM."""
+    return {"ok": True}
+
+
 @app.get("/api/auth/check", dependencies=[Depends(require_token)])
 async def auth_check() -> dict[str, object]:
     try:

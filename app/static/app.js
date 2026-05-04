@@ -8,12 +8,24 @@ let pollers = new Map(); // artifact_id -> intervalId
 
 // ---------- helpers ----------
 function showToast(msg, ms = 2500) {
+  // Detect NotebookLM auth-expired errors and show the clear banner instead.
+  if (typeof msg === "string" && /NotebookLM auth failed|notebooklm login|NOTEBOOKLM_AUTH_JSON/i.test(msg)) {
+    showNlmBanner();
+    msg = "NotebookLM oturumu süresi doldu";
+  }
+  // Cap message length so super long errors don't fill the screen
+  const short = (typeof msg === "string" && msg.length > 100) ? msg.slice(0, 100) + "…" : msg;
   const t = $("#toast");
-  t.textContent = msg;
+  t.textContent = short;
   t.classList.remove("hidden");
   clearTimeout(showToast._h);
   showToast._h = setTimeout(() => t.classList.add("hidden"), ms);
 }
+
+function showNlmBanner() {
+  $("#nlm-banner").classList.remove("hidden");
+}
+$("#nlm-banner-dismiss")?.addEventListener("click", () => $("#nlm-banner").classList.add("hidden"));
 
 async function api(path, opts = {}) {
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
@@ -642,14 +654,16 @@ async function downloadArtifact(nbId, a) {
 
 // ---------- init ----------
 async function init() {
+  // Don't auto-load notebooks here — that would hit NotebookLM on every page
+  // open and accelerate Google's abuse-flag for the server-side cookie.
+  // Notebooks are loaded lazily when the user clicks Defterler / Üret / FAB.
   activateTab("search");
-  await loadNotebooks();
 }
 
 async function checkAuthAndStart() {
-  // Try a protected endpoint with the cookie. 200 = authed, 401 = need login.
+  // Lightweight check — does NOT hit NotebookLM, just verifies cookie.
   try {
-    const r = await fetch("/api/notebooks", { credentials: "same-origin" });
+    const r = await fetch("/api/auth/whoami", { credentials: "same-origin" });
     if (r.ok) {
       hideAuth();
       init();
